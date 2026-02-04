@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable
-from typing import TypeAlias, override
+from collections.abc import Callable, Sequence
+from typing import Protocol, TypeAlias, override
 
+class Stringable(Protocol):
+    @override
+    def __str__(self) -> str:
+        ...
 
 def run(*argv: str):
     if len(argv) == 0:
@@ -55,35 +59,36 @@ class File(Target):
         return True
 
 
-Inputs: TypeAlias = list[str] | tuple[str]
+TargetLike: TypeAlias = Target | str
+Inputs: TypeAlias = Sequence[TargetLike]
 Recipe: TypeAlias = Callable[[Target, Inputs], None]
+RecipeLike: TypeAlias = Recipe | str | Sequence[str]
 
 
 class Rule:
     target: Target
     inputs: Inputs
-    recipe: Recipe | None
+    recipe: Recipe
 
     def __init__(
         self,
         target: Target | str,
         inputs: Inputs | None = None,
-        recipe: Recipe | None = None,
+        recipe: RecipeLike | None = None
     ):
         if not isinstance(target, Target):
             target = Target(target)
 
         self.target = target
         self.inputs = inputs or []
-        self.recipe = recipe
+        self.recipe = _recipe(recipe)
 
     @override
     def __str__(self):
         return self.target.name
 
     def execute(self):
-        if self.recipe:
-            (self.recipe)(self.target, self.inputs)
+        (self.recipe)(self.target, self.inputs)
 
 
 class Macher:
@@ -109,41 +114,85 @@ class Macher:
         rule = self.find_rule(name)
 
         if rule is None:
-            raise Exception(f"No rule matching {name}")
+            raise Exception(f"No rule for making {name}")
 
         return rule
 
     def mach(self, rule: Rule):
         self._log(f"making {rule}...")
         outdated = rule.target.outdated()
+
         for inp in rule.inputs:
-            inp_rule = self.require_rule(inp)
+            if isinstance(inp, Target):
+                # If the input is an inline target, define a trivial rule to wrap it.
+                # Useful for input files under user control.
+                inp_rule = Rule(inp)
+            else:
+                # Look up the rule for making the input
+                inp_rule = self.require_rule(inp)
 
             self.mach(inp_rule)
             outdated = rule.target.outdated(inp_rule.target)
 
         if outdated:
             rule.execute()
-            self._log(f"...done {rule}")
+            self._log(f"...made {rule}.")
         else:
-            self._log(f"...skipped {rule}")
+            self._log(f"...got {rule}.")
 
 
 macher = Macher()
 
 
 def mach(
-    target: Target | str, inputs: Inputs | None = None, recipe: Recipe | None = None
+    target: Target | str, inputs: Inputs | None = None, recipe: RecipeLike | None = None
 ):
     macher.add_rule(Rule(target, inputs, recipe))
 
+def _recipe(recipe: RecipeLike | None) -> Recipe:
+    if recipe is None:
+        def null(_target: Target, _inputs: Inputs):
+            pass
+        return null
+    elif isinstance(recipe, str): # note that str is a Sequence
+        return _shell(recipe)
+    elif isinstance(recipe, Sequence):
+        rr = [ _recipe(r) for r in recipe ]
 
-def shell(cmd: str) -> Recipe:
+        def sq(target: Target, inputs: Inputs):
+            for r in rr:
+                r(target, inputs)
+        return sq
+
+    assert( isinstance(recipe, Callable) )
+    return recipe
+
+Quotable: TypeAlias = Stringable|Sequence['Quotable']
+
+def _quote( x: Quotable ) -> str:
+    if isinstance(x, Sequence) and not isinstance(x, str): # note that str is a Sequence
+        ss = [ _quote(s) for s in x ]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        return " ".join(ss)
+    else:
+
+        # TODO: proper escaping!
+        return '"' + str(x) + '"'
+
+def _shell(cmd: str) -> Recipe:
     def f(target: Target, inputs: Inputs):
         first = inputs[0] if len(inputs) > 0 else ""
-        effective_cmd = cmd.replace("${@}", str(target)).replace("${<}", first)
+
+        # TODO: resolve variables from context
+        # TODO: support $@ as well as $(@), but fail on $foo
+        # TODO: support function calls
+        # TODO: support lisp-style nested calls
+        # TODO: resolve $$ and $($) to $
+        effective_cmd = cmd.replace("$(@)", _quote(target)).replace("$(<)", _quote(first))
 
         print("\t", effective_cmd)
+
+        # TODO: optionally suppress output
+        # TODO: pipe into stdin to support multi-command recipes
         _ = os.system(effective_cmd)
 
     return f

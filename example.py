@@ -1,6 +1,5 @@
 from mach import *
 
-mach(File("mach.py"))
-mach(File("output.txt"), ["mach.py"], shell("grep ^def ${<} > ${@}"))
+mach(File("output.txt"), [File("mach.py")], "grep ^def $(<) > $(@)")
 mach("all", ["output.txt"])
 run()
