@@ -59,8 +59,9 @@ class File(Target):
         return True
 
 
-TargetLike: TypeAlias = Target | str
-Inputs: TypeAlias = Sequence[TargetLike]
+TargetLike: TypeAlias = "Target | str"
+InputLike: TypeAlias = "Target | Rule | str"
+Inputs: TypeAlias = Sequence[InputLike]
 Recipe: TypeAlias = Callable[[Target, Inputs], None]
 RecipeLike: TypeAlias = Recipe | str | Sequence[str]
 
@@ -72,12 +73,11 @@ class Rule:
 
     def __init__(
         self,
-        target: Target | str,
+        target: TargetLike,
         inputs: Inputs | None = None,
         recipe: RecipeLike | None = None
     ):
-        if not isinstance(target, Target):
-            target = Target(target)
+        target = _target(target)
 
         self.target = target
         self.inputs = inputs or []
@@ -118,19 +118,32 @@ class Macher:
 
         return rule
 
+    def _input_rule(self, inp: InputLike) -> Rule:
+        if isinstance(inp, Rule):
+            return inp
+
+        if isinstance(inp, str):
+            rule = self.find_rule(inp)
+
+            if rule:
+                return rule
+
+            if _is_file_name(inp):
+                # The name looks like a file name.
+                # Usefule for files under user control
+                inp = File(inp)
+            else:
+                raise Exception(f"No rule for making {inp}")
+
+        # The input is an inline target, define a trivial rule to wrap it.
+        return Rule(inp)
+
     def mach(self, rule: Rule):
         self._log(f"making {rule}...")
         outdated = rule.target.outdated()
 
         for inp in rule.inputs:
-            if isinstance(inp, Target):
-                # If the input is an inline target, define a trivial rule to wrap it.
-                # Useful for input files under user control.
-                inp_rule = Rule(inp)
-            else:
-                # Look up the rule for making the input
-                inp_rule = self.require_rule(inp)
-
+            inp_rule = self._input_rule(inp)
             self.mach(inp_rule)
             outdated = rule.target.outdated(inp_rule.target)
 
@@ -145,9 +158,24 @@ macher = Macher()
 
 
 def mach(
-    target: Target | str, inputs: Inputs | None = None, recipe: RecipeLike | None = None
+    target: TargetLike, inputs: Inputs | None = None, recipe: RecipeLike | None = None
 ):
-    macher.add_rule(Rule(target, inputs, recipe))
+    rule = Rule(target, inputs, recipe)
+    macher.add_rule(rule)
+    return rule
+
+def _is_file_name(name: str) -> bool:
+    return '.' in name or '/' in name
+
+def _target(target: TargetLike) -> Target:
+    if isinstance(target, str): # note that str is a Sequence
+        if _is_file_name(target):
+            # if the name contains a dot or slash, it's a file
+            return File(target)
+        else:
+            return Target(target)
+
+    return target
 
 def _recipe(recipe: RecipeLike | None) -> Recipe:
     if recipe is None:
