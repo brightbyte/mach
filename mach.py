@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import os
 import sys
+import re
 from collections.abc import Callable, Sequence
 from typing import Protocol, TypeAlias, override
 
+
 class Stringable(Protocol):
     @override
-    def __str__(self) -> str:
-        ...
+    def __str__(self) -> str: ...
+
 
 def run(*argv: str):
     if len(argv) == 0:
@@ -59,10 +61,18 @@ class File(Target):
         return True
 
 
+class Function(Protocol):
+    def __call__(self, context: "Context", *args: str) -> "VarValue": ...
+
+
+VarValue: TypeAlias = (
+    str | int | float | bool | Stringable | Function | Sequence["VarValue"] | None
+)
+Context: TypeAlias = dict[str, VarValue]
 TargetLike: TypeAlias = "Target | str"
 InputLike: TypeAlias = "Target | Rule | str"
 Inputs: TypeAlias = Sequence[InputLike]
-Recipe: TypeAlias = Callable[[Target, Inputs], None]
+Recipe: TypeAlias = Callable[[Context], None]
 RecipeLike: TypeAlias = Recipe | str | Sequence[str]
 
 
@@ -75,7 +85,7 @@ class Rule:
         self,
         target: TargetLike,
         inputs: Inputs | None = None,
-        recipe: RecipeLike | None = None
+        recipe: RecipeLike | None = None,
     ):
         target = _target(target)
 
@@ -87,15 +97,28 @@ class Rule:
     def __str__(self):
         return self.target.name
 
-    def execute(self):
-        (self.recipe)(self.target, self.inputs)
+    def execute(self, ctx: Context):
+        first = self.inputs[0] if len(self.inputs) else None
+
+        ctx = {
+            **ctx,
+            "<": first,
+            "__first_input__": first,
+            "^": self.inputs,
+            "__inputs__": self.inputs,
+            "@": self.target,
+            "__target__": self.target,
+        }
+        (self.recipe)(ctx)
 
 
 class Macher:
     rules: list[Rule]
+    context: Context
 
     def __init__(self):
         self.rules = []
+        self.context = {}
 
     def _log(self, msg: str):
         print(msg)
@@ -104,8 +127,11 @@ class Macher:
         self.rules.append(rule)
 
     def find_rule(self, name: str) -> Rule | None:
+        # TODO: best match (for patterns)
+        # TODO: maybe: multi-match (merge recipes and inputs)
         for r in self.rules:
             if r.target.matches(name):
+                # TODO: "cook" the rule after a pattern match or group match
                 return r
 
         return None
@@ -148,7 +174,7 @@ class Macher:
             outdated = rule.target.outdated(inp_rule.target)
 
         if outdated:
-            rule.execute()
+            rule.execute(self.context)
             self._log(f"...made {rule}.")
         else:
             self._log(f"...got {rule}.")
@@ -160,15 +186,20 @@ macher = Macher()
 def mach(
     target: TargetLike, inputs: Inputs | None = None, recipe: RecipeLike | None = None
 ):
+    # TODO: multi target
     rule = Rule(target, inputs, recipe)
     macher.add_rule(rule)
     return rule
 
+
 def _is_file_name(name: str) -> bool:
-    return '.' in name or '/' in name
+    return "." in name or "/" in name
+
 
 def _target(target: TargetLike) -> Target:
-    if isinstance(target, str): # note that str is a Sequence
+    # TODO: pattern target (use % or regex or glob)
+    # TODO: target group
+    if isinstance(target, str):  # note that str is a Sequence
         if _is_file_name(target):
             # if the name contains a dot or slash, it's a file
             return File(target)
@@ -177,45 +208,74 @@ def _target(target: TargetLike) -> Target:
 
     return target
 
+
 def _recipe(recipe: RecipeLike | None) -> Recipe:
     if recipe is None:
-        def null(_target: Target, _inputs: Inputs):
+
+        def null(_ctx: Context):
             pass
+
         return null
-    elif isinstance(recipe, str): # note that str is a Sequence
+    elif isinstance(recipe, str):  # note that str is a Sequence
         return _shell(recipe)
     elif isinstance(recipe, Sequence):
-        rr = [ _recipe(r) for r in recipe ]
+        rr = [_recipe(r) for r in recipe]
 
-        def sq(target: Target, inputs: Inputs):
+        def sq(ctx: Context):
             for r in rr:
-                r(target, inputs)
+                r(ctx)
+
         return sq
 
-    assert( isinstance(recipe, Callable) )
+    assert isinstance(recipe, Callable)
     return recipe
 
-Quotable: TypeAlias = Stringable|Sequence['Quotable']
 
-def _quote( x: Quotable ) -> str:
-    if isinstance(x, Sequence) and not isinstance(x, str): # note that str is a Sequence
-        ss = [ _quote(s) for s in x ]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+Quotable: TypeAlias = Stringable | Sequence["Quotable"]
+
+
+def _quote(x: Quotable) -> str:
+    if isinstance(x, Sequence) and not isinstance(
+        x, str
+    ):  # note that str is a Sequence
+        ss = [_quote(s) for s in x]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
         return " ".join(ss)
     else:
-
         # TODO: proper escaping!
         return '"' + str(x) + '"'
 
-def _shell(cmd: str) -> Recipe:
-    def f(target: Target, inputs: Inputs):
-        first = inputs[0] if len(inputs) > 0 else ""
 
-        # TODO: resolve variables from context
-        # TODO: support $@ as well as $(@), but fail on $foo
+def _shell(cmd: str) -> Recipe:
+    def f(ctx: Context):
+        def sub(match: re.Match[str]):
+            if match.group(3) is not None:
+                raise Exception(f"Found ambiguous variable expression {match.group(0)}. " +
+                    f"For the shell variable, use $${match.group(3)}. " +
+                    f"For the mach variable, use $({match.group(3)})."
+                )
+
+            k = match.group(2) if match.group(1) is None else match.group(1)
+
+            # $($) always means $
+            if k == "$":
+                return "$"
+
+            # TODO: warn/fail on missing variables
+            v = ctx.get(k)
+
+            if callable(v):
+                v = v(ctx)
+
+            return str(v)
+
         # TODO: support function calls
         # TODO: support lisp-style nested calls
-        # TODO: resolve $$ and $($) to $
-        effective_cmd = cmd.replace("$(@)", _quote(target)).replace("$(<)", _quote(first))
+
+        # supports $@ as well as $(@)
+        # supports $(x) but not $x (we match it but then fail), to avoid confusion with shell variables
+        # supports $( a b c ) but not $ a b c
+        # $$ is not an escape but equivalent to $($) which resolves to $
+        effective_cmd = re.sub(r"\$\(([^()\r\n])\)|\$([^()\s\w])|\$(\w+)", sub, cmd)
 
         print("\t", effective_cmd)
 
