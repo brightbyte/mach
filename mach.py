@@ -231,56 +231,71 @@ def _recipe(recipe: RecipeLike | None) -> Recipe:
     return recipe
 
 
-Quotable: TypeAlias = Stringable | Sequence["Quotable"]
+Quotable: TypeAlias = Stringable | None | Sequence["Quotable"]
 
+def _flatten(x: Quotable, quote = False) -> str:
+    if x is None:
+        x = ""
 
-def _quote(x: Quotable) -> str:
     if isinstance(x, Sequence) and not isinstance(
         x, str
     ):  # note that str is a Sequence
-        ss = [_quote(s) for s in x]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        ss = [_flatten(s, quote) for s in x]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
         return " ".join(ss)
+    elif quote:
+        s = str(x).replace('\\', '\\\\').replace('\'', '\\\'')
+        return "'" + s + "'"
     else:
-        # TODO: proper escaping!
-        return '"' + str(x) + '"'
+        return str(x)
 
+expand_pattern = re.compile(r"\$\(([^()'\r\n]+)\)|\$'([^()'\r\n]+)'|\$([^()'\s\w])|\$(\w+)")
+
+def _expand_command(cmd: str, ctx: Context) -> str:
+    def sub(match: re.Match[str]):
+        quote = False
+        if match.group(4) is not None:
+            raise Exception(f"Found ambiguous variable expression {match.group(0)}. " +
+                f"For the shell variable, use $${match.group(3)}. " +
+                f"For the mach variable, use $({match.group(3)})."
+            )
+        elif match.group(3) is not None:
+            k = match.group(3)
+        elif match.group(2) is not None:
+            # TODO: implement quoting as a function as well, for complex cases
+            k = match.group(2)
+            quote = True
+        elif match.group(1) is not None:
+            k = match.group(1)
+        else:
+            assert(False) # unreachable
+
+        # $($) always means $
+        if k == "$":
+            return "$"
+
+        # TODO: warn/fail on missing variables
+        v = ctx.get(k)
+
+        # TODO: resolve callables in nested lists
+        if callable(v):
+            v = v(ctx)
+
+        return _flatten(v, quote)
+
+    # TODO: support function calls
+    # TODO: support lisp-style nested calls
+    return expand_pattern.sub(sub, cmd)
 
 def _shell(cmd: str) -> Recipe:
     def f(ctx: Context):
-        def sub(match: re.Match[str]):
-            if match.group(3) is not None:
-                raise Exception(f"Found ambiguous variable expression {match.group(0)}. " +
-                    f"For the shell variable, use $${match.group(3)}. " +
-                    f"For the mach variable, use $({match.group(3)})."
-                )
-
-            k = match.group(2) if match.group(1) is None else match.group(1)
-
-            # $($) always means $
-            if k == "$":
-                return "$"
-
-            # TODO: warn/fail on missing variables
-            v = ctx.get(k)
-
-            if callable(v):
-                v = v(ctx)
-
-            return str(v)
-
-        # TODO: support function calls
-        # TODO: support lisp-style nested calls
-
-        # supports $@ as well as $(@)
-        # supports $(x) but not $x (we match it but then fail), to avoid confusion with shell variables
-        # supports $( a b c ) but not $ a b c
-        # $$ is not an escape but equivalent to $($) which resolves to $
-        effective_cmd = re.sub(r"\$\(([^()\r\n])\)|\$([^()\s\w])|\$(\w+)", sub, cmd)
-
-        print("\t", effective_cmd)
+        expanded_cmd = _expand_command(cmd, ctx)
+        print("\t", expanded_cmd)
 
         # TODO: optionally suppress output
         # TODO: pipe into stdin to support multi-command recipes
-        _ = os.system(effective_cmd)
+        _ = _system(expanded_cmd)
 
     return f
+
+def _system(cmd: str) -> int:
+    return os.system(cmd)
