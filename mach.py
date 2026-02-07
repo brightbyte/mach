@@ -4,13 +4,9 @@ import os
 import sys
 import re
 from collections.abc import Callable, Sequence
-from typing import Protocol, TypeAlias, override
+from typing import TypeAlias, override
 
-
-class Stringable(Protocol):
-    @override
-    def __str__(self) -> str: ...
-
+from wert import Context, flatten
 
 def run(*argv: str):
     if len(argv) == 0:
@@ -61,14 +57,6 @@ class File(Target):
         return True
 
 
-class Function(Protocol):
-    def __call__(self, context: "Context", *args: str) -> "VarValue": ...
-
-
-VarValue: TypeAlias = (
-    str | int | float | bool | Stringable | Function | Sequence["VarValue"] | None
-)
-Context: TypeAlias = dict[str, VarValue]
 TargetLike: TypeAlias = "Target | str"
 InputLike: TypeAlias = "Target | Rule | str"
 Inputs: TypeAlias = Sequence[InputLike]
@@ -231,23 +219,6 @@ def _recipe(recipe: RecipeLike | None) -> Recipe:
     return recipe
 
 
-Quotable: TypeAlias = Stringable | None | Sequence["Quotable"]
-
-def _flatten(x: Quotable, quote = False) -> str:
-    if x is None:
-        x = ""
-
-    if isinstance(x, Sequence) and not isinstance(
-        x, str
-    ):  # note that str is a Sequence
-        ss = [_flatten(s, quote) for s in x]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
-        return " ".join(ss)
-    elif quote:
-        s = str(x).replace('\\', '\\\\').replace('\'', '\\\'')
-        return "'" + s + "'"
-    else:
-        return str(x)
-
 expand_pattern = re.compile(r"\$\(([^()'\r\n]+)\)|\$'([^()'\r\n]+)'|\$([^()'\s\w])|\$(\w+)")
 
 def _expand_command(cmd: str, ctx: Context) -> str:
@@ -280,7 +251,7 @@ def _expand_command(cmd: str, ctx: Context) -> str:
         if callable(v):
             v = v(ctx)
 
-        return _flatten(v, quote)
+        return flatten(v, quote)
 
     # TODO: support function calls
     # TODO: support lisp-style nested calls

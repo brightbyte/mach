@@ -18,7 +18,7 @@ def data_provider(fn_data_provider):
         return repl
     return test_decorator
 
-class RateLimitTest(unittest.TestCase):
+class MachTest(unittest.TestCase):
     context = {
         "%": "percent",
         "s": "just a test",
@@ -61,7 +61,7 @@ class RateLimitTest(unittest.TestCase):
 
     @data_provider(expand_command_cases)
     def test_expand_command(self, cmd, expected):
-        self.assertEqual(expected, mach._expand_command(cmd, RateLimitTest.context))
+        self.assertEqual(expected, mach._expand_command(cmd, MachTest.context))
 
 if __name__ == "__main__":
     unittest.main()
