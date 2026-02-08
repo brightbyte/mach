@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import os
 import sys
-import re
 from collections.abc import Callable, Sequence
-from typing import TypeAlias, override
+from typing import TypeAlias
+from typing import override
 
-from wert import Context, flatten
+from wert import Context, expand_all
+from env import Environment, StdOutHandler
 
 def run(*argv: str):
     if len(argv) == 0:
@@ -63,7 +64,6 @@ Inputs: TypeAlias = Sequence[InputLike]
 Recipe: TypeAlias = Callable[[Context], None]
 RecipeLike: TypeAlias = Recipe | str | Sequence[str]
 
-
 class Rule:
     target: Target
     inputs: Inputs
@@ -72,14 +72,14 @@ class Rule:
     def __init__(
         self,
         target: TargetLike,
-        inputs: Inputs | None = None,
-        recipe: RecipeLike | None = None,
+        inputs: Inputs,
+        recipe: Recipe,
     ):
         target = _target(target)
 
         self.target = target
-        self.inputs = inputs or []
-        self.recipe = _recipe(recipe)
+        self.inputs = inputs
+        self.recipe = recipe
 
     @override
     def __str__(self):
@@ -90,6 +90,7 @@ class Rule:
 
         ctx = {
             **ctx,
+            "$": '$',
             "<": first,
             "__first_input__": first,
             "^": self.inputs,
@@ -107,12 +108,20 @@ class Macher:
     def __init__(self):
         self.rules = []
         self.context = {}
+        self.env = Environment()
 
     def _log(self, msg: str):
         print(msg)
 
     def add_rule(self, rule: Rule):
         self.rules.append(rule)
+
+    def make_rule(self, target: TargetLike, inputs: Inputs | None = None, recipe: RecipeLike | None = None):
+        return Rule(
+            target,
+            inputs or [],
+            self._recipe(recipe)
+        )
 
     def find_rule(self, name: str) -> Rule | None:
         # TODO: best match (for patterns)
@@ -150,7 +159,7 @@ class Macher:
                 raise Exception(f"No rule for making {inp}")
 
         # The input is an inline target, define a trivial rule to wrap it.
-        return Rule(inp)
+        return self.make_rule(inp)
 
     def mach(self, rule: Rule):
         self._log(f"making {rule}...")
@@ -168,6 +177,39 @@ class Macher:
             self._log(f"...got {rule}.")
 
 
+    def _recipe(self, recipe: RecipeLike | None, stdout: StdOutHandler | None = None ) -> Recipe:
+        if recipe is None:
+
+            def null(_ctx: Context):
+                pass
+
+            return null
+        elif isinstance(recipe, str):  # note that str is a Sequence
+            return self.shell(recipe, stdout)
+        elif isinstance(recipe, Sequence):
+            rr = [self._recipe(r) for r in recipe]
+
+            def sq(ctx: Context):
+                for r in rr:
+                    r(ctx)
+
+            return sq
+
+        assert isinstance(recipe, Callable)
+        return recipe
+
+    def shell(self, cmd: str, stdout: StdOutHandler | None = None) -> Recipe:
+        def f(ctx: Context):
+            expanded_cmd = expand_all(cmd, ctx)
+            print("\t", expanded_cmd)
+
+            # TODO: Fail on non-zero return code!
+            # TODO: optionally suppress output
+            # TODO: pipe into stdin to support multi-command recipes
+            _ = self.env.system(expanded_cmd, stdout)
+
+        return f
+
 macher = Macher()
 
 
@@ -175,14 +217,12 @@ def mach(
     target: TargetLike, inputs: Inputs | None = None, recipe: RecipeLike | None = None
 ):
     # TODO: multi target
-    rule = Rule(target, inputs, recipe)
-    macher.add_rule(rule)
+    rule = macher.make_rule(target, inputs, recipe)
+    macher.add_rule( rule )
     return rule
-
 
 def _is_file_name(name: str) -> bool:
     return "." in name or "/" in name
-
 
 def _target(target: TargetLike) -> Target:
     # TODO: pattern target (use % or regex or glob)
@@ -195,78 +235,3 @@ def _target(target: TargetLike) -> Target:
             return Target(target)
 
     return target
-
-
-def _recipe(recipe: RecipeLike | None) -> Recipe:
-    if recipe is None:
-
-        def null(_ctx: Context):
-            pass
-
-        return null
-    elif isinstance(recipe, str):  # note that str is a Sequence
-        return _shell(recipe)
-    elif isinstance(recipe, Sequence):
-        rr = [_recipe(r) for r in recipe]
-
-        def sq(ctx: Context):
-            for r in rr:
-                r(ctx)
-
-        return sq
-
-    assert isinstance(recipe, Callable)
-    return recipe
-
-
-expand_pattern = re.compile(r"\$\(([^()'\r\n]+)\)|\$'([^()'\r\n]+)'|\$([^()'\s\w])|\$(\w+)")
-
-def _expand_command(cmd: str, ctx: Context) -> str:
-    def sub(match: re.Match[str]):
-        quote = False
-        if match.group(4) is not None:
-            raise Exception(f"Found ambiguous variable expression {match.group(0)}. " +
-                f"For the shell variable, use $${match.group(3)}. " +
-                f"For the mach variable, use $({match.group(3)})."
-            )
-        elif match.group(3) is not None:
-            k = match.group(3)
-        elif match.group(2) is not None:
-            # TODO: implement quoting as a function as well, for complex cases
-            k = match.group(2)
-            quote = True
-        elif match.group(1) is not None:
-            k = match.group(1)
-        else:
-            assert(False) # unreachable
-
-        # $($) always means $
-        if k == "$":
-            return "$"
-
-        # TODO: warn/fail on missing variables
-        v = ctx.get(k)
-
-        # TODO: resolve callables in nested lists
-        if callable(v):
-            v = v(ctx)
-
-        return flatten(v, quote)
-
-    # TODO: support function calls
-    # TODO: support lisp-style nested calls
-    return expand_pattern.sub(sub, cmd)
-
-def _shell(cmd: str) -> Recipe:
-    def f(ctx: Context):
-        expanded_cmd = _expand_command(cmd, ctx)
-        print("\t", expanded_cmd)
-
-        # TODO: optionally suppress output
-        # TODO: pipe into stdin to support multi-command recipes
-        _ = _system(expanded_cmd)
-
-    return f
-
-def _system(cmd: str) -> int:
-    return os.system(cmd)
