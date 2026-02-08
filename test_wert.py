@@ -12,8 +12,8 @@ def data_provider(fn_data_provider):
             for case in fn_data_provider():
                 try:
                     fn(self, *case)
-                except AssertionError as ex:
-                    print(f"Assertion error caught with data set {case}")
+                except Exception as ex:
+                    print(f"Exception caught with data set {case}")
                     raise ex
         return repl
     return test_decorator
@@ -25,7 +25,7 @@ class WertTest(unittest.TestCase):
         "s": "just a test",
         "named": "named value",
         "with_dollar": "tricky $(value)",
-        "f": lambda _: "from a function",
+        "f": lambda *p: "from a function",
         "list": [ "just", "a", "list" ],
         "nested_list": [ "just", [ "a", ( "list", ) ] ],
         "tuple": ( "just", "a", "tuple" ),
@@ -45,19 +45,27 @@ class WertTest(unittest.TestCase):
             ( "", ""),
             ( "a b c", "a b c"),
             ( "#$%#", '#percent#' ),
+            ( "#$'%'#", '#\'percent\'#' ),
             ( "#$(s)#", '#just a test#' ),
+            ( "#$(s", Exception ),
+            ( "#$(x y z)", SyntaxError ), # bad python
             ( "#$$variable#", '#$variable#' ),
             ( "#$%$$var#", '#percent$var#' ),
             ( "#$(undefined)#", NameError ),
-            ( "#$(None)#", '##' ), # FIXME
+            ( "#$(None)#", '##' ),
             ( "$(named)", 'named value' ),
+            ( "ambiguous $named", Exception ),
+            ( "shell $$named", 'shell $named' ),
             ( "$(with_dollar)", 'tricky $(value)' ),
-            ( "$(f)", 'from a function' ),
+            ( "$(f) as lazy variable", 'from a function as lazy variable' ),
+            ( "$(f()) via call", 'from a function via call' ),
             ( "$(list) and $(tuple)", 'just a list and just a tuple' ),
             ( "$([s.upper() for s in list])", 'JUST A LIST' ),
             ( "$(quote(list)) and $(quote(tuple))", "'just' 'a' 'list' and 'just' 'a' 'tuple'" ),
+            ( "$'(list)' and $'(tuple)'", "'just' 'a' 'list' and 'just' 'a' 'tuple'" ),
             ( "$(quote(nested_list))", "'just' 'a' 'list'" ),
             ( "$(quote(trixy))", "'\\'back\\\\slash\\''" ),
+            ( "$'(trixy) thing", Exception ), # missing closing '
             ( "$(True) or $(False)", 'True or False' ),
             ( "$(three) < $(pi)", '3 < 3.14' ),
             ( "$(a + b)", '3' ),

@@ -37,7 +37,8 @@ def flatten(x: Quotable, quote = False) -> str:
     else:
         return str(x)
 
-_var_pattern = re.compile(r'\$(.)')
+_var_pattern = re.compile(r'\$\'?(.)')
+_name_pattern = re.compile(r'\w+')
 
 def _expand_next(s: str, ctx: Context) -> tuple[str, str]:
 
@@ -46,11 +47,13 @@ def _expand_next(s: str, ctx: Context) -> tuple[str, str]:
     if match is None:
         return ( s, "" )
 
+    quoted = match.group(0).startswith("$'")
     key = match.group(1)
     prefix = s[:match.start()]
 
-    # $($) always means $
-    if key == "(":
+    if _name_pattern.fullmatch(key):
+        raise Exception("Ambiguous variable "  + key)
+    elif key == "(":
         exp = s[match.end():]
 
         # python expression in parentacies. Try to parse up to the first syntax error,
@@ -60,6 +63,9 @@ def _expand_next(s: str, ctx: Context) -> tuple[str, str]:
             ast = compile(exp, '<mach>', 'eval')
             raise Exception("Expression started with $( was never closed'")
         except SyntaxError as err:
+            if err.offset is None:
+                raise err
+
             # Trim to location of first syntax error, which should be ")".
             # The result should be a valid expression.
             exp = exp[:err.offset-1]
@@ -67,24 +73,34 @@ def _expand_next(s: str, ctx: Context) -> tuple[str, str]:
         if len(exp.strip()) == 0:
             raise Exception("Expression is empty")
 
-        if s[match.end()+len(exp)] != ")":
-            raise Exception("Expected closing )")
+        end = match.end()+len(exp)
+        closing = ")'" if quoted else ")"
 
-        remainder = s[match.end()+len(exp)+1:]
+        if s[ end : end+len(closing) ] != closing:
+            raise Exception("Expected closing " + closing)
+
+        remainder = s[end+len(closing):]
 
         ast = compile(exp, '<mach>', 'eval')
         v = eval(ast, globals(), ctx) # FIXME: strip private stuff from global scope
 
     else:
+        end = match.end()
+
+        if quoted:
+            if s[ end ] != "'":
+                raise Exception("Expected closing single quote")
+            end += 1
+
         # TODO: warn/fail on missing variables
         v = ctx.get(key)
-        remainder = s[match.end():]
+        remainder = s[end:]
 
     # TODO: resolve callables in nested lists
     while callable(v):
         v = v(ctx)
 
-    result = flatten(v)
+    result = flatten(v, quoted)
     return ( prefix + result, remainder )
 
 _line_pattern = re.compile(r'(.*?)([\r\n]+|$)')
