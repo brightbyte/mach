@@ -7,7 +7,7 @@ from typing import TypeAlias
 from typing import override
 
 from wert import Context, expand_all
-from env import Environment, StdOutHandler
+from env import Environment
 
 def run(*argv: str):
     if len(argv) == 0:
@@ -177,7 +177,7 @@ class Macher:
             self._log(f"...got {rule}.")
 
 
-    def _recipe(self, recipe: RecipeLike | None, stdout: StdOutHandler | None = None ) -> Recipe:
+    def _recipe(self, recipe: RecipeLike | None ) -> Recipe:
         if recipe is None:
 
             def null(_ctx: Context):
@@ -185,7 +185,7 @@ class Macher:
 
             return null
         elif isinstance(recipe, str):  # note that str is a Sequence
-            return self.shell(recipe, stdout)
+            return self.script(recipe)
         elif isinstance(recipe, Sequence):
             rr = [self._recipe(r) for r in recipe]
 
@@ -198,15 +198,20 @@ class Macher:
         assert isinstance(recipe, Callable)
         return recipe
 
-    def shell(self, cmd: str, stdout: StdOutHandler | None = None) -> Recipe:
+    def script(self, cmd: str, echo = True, **kwargs) -> Recipe:
         def f(ctx: Context):
             expanded_cmd = expand_all(cmd, ctx)
-            print("\t", expanded_cmd)
+
+            if echo:
+                print("\t", expanded_cmd)
 
             # TODO: Fail on non-zero return code!
             # TODO: optionally suppress output
-            # TODO: pipe into stdin to support multi-command recipes
-            _ = self.env.system(expanded_cmd, stdout)
+            code = self.env.execute(expanded_cmd, **kwargs)
+
+            if code != 0:
+                # TODO: kwargs['on_error']...
+                raise Exception(f"Script returned error code {code}.")
 
         return f
 
@@ -220,6 +225,9 @@ def mach(
     rule = macher.make_rule(target, inputs, recipe)
     macher.add_rule( rule )
     return rule
+
+def script(cmd: str, **kwargs):
+    return macher.script(cmd, **kwargs)
 
 def _is_file_name(name: str) -> bool:
     return "." in name or "/" in name
