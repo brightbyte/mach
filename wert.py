@@ -1,6 +1,7 @@
 import re
 
 from typing import TypeAlias, Protocol, override
+from collections import ChainMap
 from collections.abc import Sequence
 
 class Stringable(Protocol):
@@ -15,7 +16,23 @@ VarValue: TypeAlias = (
     str | int | float | bool | Stringable | Function | Sequence["VarValue"] | None
 )
 
-Context: TypeAlias = dict[str, VarValue]
+class Context(ChainMap[str, VarValue]):
+    def export(self, key: str, value: VarValue):
+        # update key in base map
+        self.maps[-1][key] = value
+
+    @override
+    def new_child(self, m=None, **kwargs) -> 'Context':
+        # A bit hacky...
+        child = super().new_child(m, **kwargs)
+        return Context( *child.maps )
+
+    @property
+    def parents(self) -> 'Context':
+        # A bit hacky...
+        parents = super().parents
+        return Context( *parents.maps )
+
 
 Quotable: TypeAlias = Stringable | None | Sequence["Quotable"]
 

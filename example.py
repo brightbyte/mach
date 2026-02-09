@@ -1,13 +1,20 @@
-from mach import *
+from mach import mach, script, run
+from wert import Context
 from env import OutputMode
 
 mach("%.txt", ["%.py"], """
-    grep ^def $'<' > $'(__target__)'
-"""),
+    mkdir -p output
+    grep ^def $'<' > output/$'(__target__)'
+""")
+
+def setup(ctx: Context):
+    ctx.export("test", "hello")
 
 mach("all", [
+        mach("setup", [], setup),
         "mach.txt",
         mach("slow", [], script("""
+            echo $(test)
             echo ONE
             sleep 1
             echo TWO

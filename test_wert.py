@@ -73,10 +73,12 @@ class WertTest(unittest.TestCase):
 
     @data_provider(expand_all_cases)
     def test_expand_all(self, cmd, expected):
+        ctx = wert.Context(WertTest.context)
+
         if isinstance(expected, str):
-            self.assertEqual(expected, wert.expand_all(cmd, WertTest.context))
+            self.assertEqual(expected, wert.expand_all(cmd, ctx))
         else:
-            self.assertRaises(expected, lambda: wert.expand_all(cmd, WertTest.context))
+            self.assertRaises(expected, lambda: wert.expand_all(cmd, ctx))
 
 if __name__ == "__main__":
     unittest.main()

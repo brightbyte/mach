@@ -182,16 +182,15 @@ class Rule:
     def execute(self, ctx: Context):
         first = self.inputs[0] if len(self.inputs) else None
 
-        ctx = {
-            **ctx,
-            "$": "$",
+        ctx = ctx.new_child({
             "<": first,
             "__first_input__": first,
             "^": self.inputs,
             "__inputs__": self.inputs,
             "@": self.target,
             "__target__": self.target,
-        }
+        })
+
         (self.recipe)(ctx)
 
     def matches(self, name: str) -> TargetMatch | None:
@@ -204,8 +203,11 @@ class Macher:
 
     def __init__(self):
         self.rules = []
-        self.context = {}
+        self.context = Context()
         self.env = Environment()
+
+        # FIXME: this MUST not be overwritten! It implements $$ as an escape for $!
+        self.context["$"] = "$"
 
     def _log(self, msg: str):
         print(msg)
@@ -271,6 +273,7 @@ class Macher:
         if outdated:
             rule.execute(self.context)
             self._log(f"...made {rule}.")
+            print("AFTER", self.context)
         else:
             self._log(f"...got {rule}.")
 
