@@ -1,12 +1,12 @@
 from mach import *
 from env import OutputMode
 
+mach("%.txt", ["%.py"], """
+    grep ^def $'<' > $'(__target__)'
+"""),
+
 mach("all", [
-        mach("output.txt", ["mach.py"], """
-            echo "START"
-            grep ^def $'<' > $'(__target__)'
-            echo "END"
-        """),
+        "mach.txt",
         mach("slow", [], script("""
             echo ONE
             sleep 1
