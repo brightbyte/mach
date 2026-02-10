@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from typing import TypeAlias, override
 
 from env import Environment
-from wert import Context, expand_all
+from wert import Context, VarValue, expand_all
 
 
 def run(*argv: str):
@@ -273,7 +273,6 @@ class Macher:
         if outdated:
             rule.execute(self.context)
             self._log(f"...made {rule}.")
-            print("AFTER", self.context)
         else:
             self._log(f"...got {rule}.")
 
@@ -298,12 +297,22 @@ class Macher:
         assert isinstance(recipe, Callable)
         return recipe
 
-    def script(self, cmd: str, echo=True, **kwargs) -> Recipe:
+    def script(self, cmd: str, echo=True,  **kwargs) -> Recipe:
         def f(ctx: Context):
             expanded_cmd = expand_all(cmd, ctx)
 
             if echo:
                 print("\t", expanded_cmd)
+
+            envars = ctx.get_envars()
+
+            if 'envars' in kwargs:
+                envars = {
+                    **envars,
+                    **kwargs['envars']
+                }
+
+            kwargs['envars'] = envars
 
             # TODO: Fail on non-zero return code!
             # TODO: optionally suppress output
@@ -318,6 +327,8 @@ class Macher:
 
 macher = Macher()
 
+def define(key: str, value: VarValue):
+    macher.context[key] = value
 
 def mach(
     target: TargetLike, inputs: Inputs | None = None, recipe: RecipeLike | None = None

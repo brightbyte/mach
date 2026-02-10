@@ -16,6 +16,8 @@ VarValue: TypeAlias = (
     str | int | float | bool | Stringable | Function | Sequence["VarValue"] | None
 )
 
+_envar_pattern = re.compile(r'[A-Z_]+')
+
 class Context(ChainMap[str, VarValue]):
     def export(self, key: str, value: VarValue):
         # update key in base map
@@ -32,6 +34,11 @@ class Context(ChainMap[str, VarValue]):
         # A bit hacky...
         parents = super().parents
         return Context( *parents.maps )
+
+    def get_envars(self) -> dict[str, str]:
+        envars = { key: flatten(value) for (key, value) in self.items() if _envar_pattern.fullmatch(key) }
+
+        return envars
 
 
 Quotable: TypeAlias = Stringable | None | Sequence["Quotable"]

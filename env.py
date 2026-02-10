@@ -61,7 +61,7 @@ class Environment:
         self.shell = "/bin/sh"
         self.encoding = 'utf-8'
 
-    def execute(self, script: str, output: OutputMode = OutputMode.LINES, shell: str | None = None, encoding: str | None = None ) -> int:
+    def execute(self, script: str, output: OutputMode = OutputMode.LINES, shell: str | None = None, encoding: str | None = None, envars = None ) -> int:
         encoding = str(encoding or self.encoding)
 
         p = subprocess.Popen(
@@ -70,7 +70,8 @@ class Environment:
             stdin = subprocess.PIPE,
             stdout = subprocess.PIPE,
             stderr = subprocess.PIPE,
-            encoding = encoding)
+            encoding = encoding,
+            env = envars )
 
         assert(p.stdin)
         assert(p.stdout)
