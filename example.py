@@ -1,10 +1,10 @@
-from mach import mach, script, run, define
-from wert import Context
-from env import OutputMode
+from mach import mach, script, run, define, Context
 
 mach("%.txt", ["%.py"], """
     mkdir -p output
     grep ^def $'<' > output/$'(__target__)'
+""", """
+    Make a txt file from a py file by greping for "def"
 """)
 
 def setup(ctx: Context):
@@ -12,8 +12,8 @@ def setup(ctx: Context):
 
 define("DONE", "done.")
 
-mach("all", [
-        mach("setup", [], setup),
+mach("all", help="build mach.txt", inputs = [
+        mach("_setup", [], setup),
         "mach.txt",
         mach("slow", [], script("""
             echo $(test)
@@ -23,7 +23,7 @@ mach("all", [
             sleep 1
             echo THREE
             echo $$DONE
-        """)),
+        """), "a slow script that does nothing useful"),
     ])
 
 run()
