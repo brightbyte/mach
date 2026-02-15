@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 
 import help
-from macher import Macher, TargetLike, Inputs, RecipeLike
+from macher import Macher, TargetLike, Inputs, RecipeLike, Script
 from wert import VarValue, Context
 from env import OutputMode
 
@@ -35,9 +35,16 @@ def mach(
     return rule
 
 
-def script(cmd: str, **kwargs):
+def script(cmd: str, **kwargs) -> Script:
     return macher.script(cmd, **kwargs)
 
+def blind(script: Script) -> Script:
+    script.echo = False
+    return script
+
+def mute(script: Script) -> Script:
+    script.output = OutputMode.MUTE
+    return script
 
 mach( "help", (), help.recipe(macher), help.HELP )
 

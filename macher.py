@@ -5,6 +5,7 @@ import re
 from collections.abc import Callable, Sequence
 from typing import TypeAlias, override
 
+from recipe import Recipe, RecipeLike, Script
 from env import Environment
 from wert import Context, expand_all
 
@@ -138,8 +139,6 @@ class Pattern(Target):
 TargetLike: TypeAlias = "Target | str"
 InputLike: TypeAlias = "Target | Rule | str"
 Inputs: TypeAlias = Sequence[InputLike]
-Recipe: TypeAlias = Callable[[Context], None]
-RecipeLike: TypeAlias = Recipe | str | Sequence[str]
 
 
 class Rule:
@@ -285,32 +284,8 @@ class Macher:
         assert isinstance(recipe, Callable)
         return recipe
 
-    def script(self, cmd: str, echo=True,  **kwargs) -> Recipe:
-        def f(ctx: Context):
-            expanded_cmd = expand_all(cmd, ctx)
-
-            if echo:
-                print("\t", expanded_cmd)
-
-            envars = ctx.get_envars()
-
-            if 'envars' in kwargs:
-                envars = {
-                    **envars,
-                    **kwargs['envars']
-                }
-
-            kwargs['envars'] = envars
-
-            # TODO: Fail on non-zero return code!
-            # TODO: optionally suppress output
-            code = self.env.execute(expanded_cmd, **kwargs)
-
-            if code != 0:
-                # TODO: kwargs['on_error']...
-                raise Exception(f"Script returned error code {code}.")
-
-        return f
+    def script(self, cmd: str, **kwargs) -> Script:
+        return Script(self.env, cmd, kwargs)
 
 def _is_file_name(name: str) -> bool:
     return "." in name or "/" in name
