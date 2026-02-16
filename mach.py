@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 import sys
 
@@ -8,7 +6,12 @@ from macher import Macher, TargetLike, Inputs, RecipeLike, Script
 from wert import VarValue, Context
 from env import OutputMode
 
+_disable_run = False
+
 def run(*argv: str):
+    if _disable_run:
+        return
+
     if not argv:
         argv = tuple(sys.argv)
 
@@ -53,6 +56,35 @@ def mute(script: Script) -> Script:
 mach( "help", (), help.recipe(macher), help.HELP )
 
 __all__ = [
-    'define', 'mach', 'run', 'script',
+    'declare', 'mach', 'run', 'script',
     'Context', 'OutputMode'
 ]
+
+def main():
+    argv = sys.argv
+    machfile = 'Machfile.py'
+
+    if not os.path.isfile(machfile):
+        print( f"{machfile} not found" )
+        exit(1)
+
+    global _disable_run
+    _disable_run = True
+    with open(machfile, "rb") as src:
+        code = compile(src.read(), machfile, "exec")
+
+    # HACK: make sure the Machfile gets this module instance
+    # when importing mach.
+    module_name = os.path.splitext(os.path.basename(__file__))[0]
+    if __package__:
+            sys.modules[f'{__package__}.{module_name}'] = sys.modules['__main__']
+    sys.modules[module_name] = sys.modules['__main__']
+
+    globals = {}
+    exec(code, globals, {})
+
+    _disable_run = False
+    run(*argv)
+
+if __name__ == '__main__':
+    main()

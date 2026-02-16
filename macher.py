@@ -20,11 +20,13 @@ class TargetMatch:
 
     def cook_input(self, input: InputLike) -> InputLike:
         if isinstance(input, Rule):
-            return self.cook_rule( input )
+            cooked = self.cook_rule( input )
         elif isinstance(input, Target):
-            return input.get_cooked( self.cook_name( input.name ) )
+            cooked = input.get_cooked( self.cook_name( input.name ) )
         else:
-            return self.cook_name( input )
+            cooked = self.cook_name( input )
+
+        return cooked
 
     def cook_name(self, s: str) -> str:
         return s
@@ -32,9 +34,12 @@ class TargetMatch:
     def get_cooked_target(self) -> Target:
         return self.target
 
+    def cooked_target(self, target: Target) -> Target:
+         return target.get_cooked( self.cook_name( target.name ) )
+
     def cook_rule(self, rule: Rule) -> Rule:
         return Rule(
-            self.get_cooked_target(),
+            self.cooked_target( rule.target ),
             self.cook_inputs( rule.inputs ),
             rule.recipe,
             rule.help
