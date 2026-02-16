@@ -1,4 +1,5 @@
-from mach import mach, script, run, define, Context
+from mach import mach, script, run, declare, Context
+from wert import flatten
 
 mach("%.txt", ["%.py"], """
     mkdir -p output
@@ -10,20 +11,15 @@ mach("%.txt", ["%.py"], """
 def setup(ctx: Context):
     ctx.export("test", "hello")
 
-define("DONE", "done.")
+declare("TEST", "JUST A TEST", "A test value")
+declare("lazy", lambda ctx: "lazy var")
 
-mach("all", help="build mach.txt", inputs = [
+mach("main", help="build mach.txt", inputs = [
         mach("_setup", [], setup),
         "mach.txt",
-        mach("slow", [], script("""
-            echo $(test)
-            echo ONE
-            sleep 1
-            echo TWO
-            sleep 1
-            echo THREE
-            echo $$DONE
-        """), "a slow script that does nothing useful"),
+        mach("vartest", [], script("""
+            echo $'(test)' $$TEST
+        """), "testing variables"),
     ])
 
 run()

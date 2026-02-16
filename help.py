@@ -37,13 +37,24 @@ def _print(*s):
 def _normalize(msg):
     if not msg:
         return "(no help)"
+    elif msg is True:
+            return "(no help)"
     else:
         return msg.strip()
 
-def _print_rule_help(rule: Rule):
-    _print( _bold(f"{rule.target.name}:"), _normalize(rule.help) )
+def _print_flag_help(name: str, help: str|bool):
+    _print( "\t", _bold(f"{name}:"), _normalize(help) )
 
-def _print_all_help(rules: Sequence[Rule]):
+def _print_rule_help(rule: Rule):
+    _print( "\t", _bold(f"{rule.target.name}:"), _normalize(rule.help) )
+
+def _print_all_help(flags: dict[str, str|bool], rules: Sequence[Rule]):
+    for name, help in flags.items():
+        if not help:
+            continue
+
+        _print_flag_help(name, help)
+
     for rule in rules:
         if rule.target.name.startswith('_'):
             # private helper target
@@ -52,4 +63,4 @@ def _print_all_help(rules: Sequence[Rule]):
         _print_rule_help(rule)
 
 def recipe(macher: Macher):
-    return lambda ctx: _print_all_help(macher.rules)
+    return lambda ctx: _print_all_help(macher.flags, macher.rules)

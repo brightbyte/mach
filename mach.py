@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 
 import help
@@ -8,23 +9,26 @@ from wert import VarValue, Context
 from env import OutputMode
 
 def run(*argv: str):
-    if len(argv) == 0:
+    if not argv:
         argv = tuple(sys.argv)
 
-    if len(argv) == 0:
-        argv = ("mach", "all")
-
-    if len(argv) == 1:
-        argv = (argv[0], "all")
-
-    for tgt in argv[1:]:
+    targets = macher.process_argv(argv)
+    for tgt in targets:
         rule = macher.require_rule(tgt)
         macher.mach(rule)
 
 macher = Macher()
+macher.set_variables( os.environ )
 
-def define(key: str, value: VarValue):
-    macher.context[key] = value
+def declare(name: str, default: VarValue, cli: str|bool = False):
+    """
+    Declares a variable and initializes it with a adefault value.
+    If the cli parameter is truthy, the variable can be specified on the
+    command line using foo=bar syntax. If the value of the cli parameter
+    is a string, that string will serve as the help message for the
+    variable.
+    """
+    macher.declare(name, default, cli)
 
 def mach(
     target: TargetLike, inputs: Inputs | None = None, recipe: RecipeLike | None = None, help: str | None = None
@@ -47,7 +51,6 @@ def mute(script: Script) -> Script:
     return script
 
 mach( "help", (), help.recipe(macher), help.HELP )
-
 
 __all__ = [
     'define', 'mach', 'run', 'script',

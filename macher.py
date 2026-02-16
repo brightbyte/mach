@@ -3,11 +3,11 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Callable, Sequence
-from typing import TypeAlias, override
+from typing import Iterable, Mapping, TypeAlias, override
 
 from recipe import Recipe, RecipeLike, Script
 from env import Environment
-from wert import Context, expand_all
+from wert import Context, VarValue
 
 class TargetMatch:
     target: Target
@@ -182,15 +182,23 @@ class Rule:
     def matches(self, name: str) -> TargetMatch | None:
         return self.target.matches(name)
 
+_VAR_NAME_PATTERN = re.compile( r'(\w\w+)' )
+_FLAG_PATTERN = re.compile( _VAR_NAME_PATTERN.pattern + r'=(.*)' )
+_OPTION_PATTERN = re.compile( r'--' + _VAR_NAME_PATTERN.pattern + r'(?:=(.*))?' )
+_DEFAULT_OPTIONS = {}
 
 class Macher:
     rules: list[Rule]
     context: Context
+    flags: dict[str, str|bool]
+    options: dict[str, str|bool]
 
     def __init__(self):
         self.rules = []
         self.context = Context()
         self.env = Environment()
+        self.flags = {}
+        self.options = dict(_DEFAULT_OPTIONS)
 
         # FIXME: this MUST not be overwritten! It implements $$ as an escape for $!
         self.context["$"] = "$"
@@ -224,7 +232,7 @@ class Macher:
         rule = self.find_rule(name)
 
         if rule is None:
-            raise Exception(f"No rule for making {name}")
+            raise ValueError(f"No rule for making {name}")
 
         return rule
 
@@ -243,7 +251,7 @@ class Macher:
                 # Usefule for files under user control
                 inp = File(inp)
             else:
-                raise Exception(f"No rule for making {inp}")
+                raise ValueError(f"No rule for making {inp}")
 
         # The input is an inline target, define a trivial rule to wrap it.
         return self.make_rule(inp)
@@ -286,6 +294,85 @@ class Macher:
 
     def script(self, cmd: str, **kwargs) -> Script:
         return Script(self.env, cmd, kwargs)
+
+    def set_var(self, name: str, value: VarValue):
+        self.context[name] = value
+
+    def set_variables(self, values: Mapping[str, VarValue]):
+        for name, value in values.items():
+            self.set_var(name, value)
+
+    def declare(self, name: str, default: VarValue, cli: str|bool = False):
+        """
+        Declares a variable and initializes it with a adefault value.
+        If the cli parameter is truthy, the variable can be specified on the
+        command line using foo=bar syntax. If the value of the cli parameter
+        is a string, that string will serve as the help message for the
+        variable.
+        """
+
+        if not _VAR_NAME_PATTERN.fullmatch(name):
+            raise ValueError( f'Not a valid variable name: {name}' )
+
+        self.flags[name] = cli
+        self.context[name] = default
+
+    def set_cli_flag(self, name: str, value: VarValue):
+        if name not in self.flags:
+            raise ValueError( f"Undeclared flag {name}" )
+
+        if not self.flags[name]:
+            raise ValueError( f"Flag {name} cannot be set on the command line" )
+
+        self.set_var(name, value)
+
+    def set_cli_option(self, name: str, value: str|bool):
+        if name not in self.options:
+            raise ValueError( f"Unknown option {name}" )
+
+        if isinstance(self.options[name], bool) and not isinstance(value, bool):
+            raise ValueError( f"Expected no value for option {bool}" )
+
+        if not isinstance(self.options[name], bool) and isinstance(value, bool):
+            raise ValueError( f"Expected value for option {bool}" )
+
+        self.options[name] = value
+
+    def process_argv(self, argv: Sequence[str]) -> Sequence[str]:
+        """
+        Process command line arguments and extract any flags and options.
+        Returns a list of targets to make (at least one).
+        """
+
+        if not argv:
+            argv = ("mach")
+
+        targets = []
+
+        for item in argv[1:]:
+            match = _OPTION_PATTERN.fullmatch( item )
+            if match:
+                key = match.group(1)
+                value = match.group(2) or True
+
+                self.set_cli_option(key, value)
+                continue
+
+            match = _FLAG_PATTERN.fullmatch( item )
+            if match:
+                key = match.group(1)
+                value = match.group(2)
+
+                self.set_cli_flag(key, value)
+                continue
+
+            # Not an option or flag, must be the name of a target, then.
+            targets.append(item)
+
+        if not targets:
+            targets = ("main",)
+
+        return targets
 
 def _is_file_name(name: str) -> bool:
     return "." in name or "/" in name
