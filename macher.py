@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable, Sequence
 from typing import Mapping
 
-from target import TargetLike, Inputs, InputLike, Rule, File, is_file_name
+from target import TargetLike, InputLike, Rule, File, is_file_name
 from recipe import Recipe, RecipeLike, Script
 from env import Environment
 from wert import Context, VarValue
@@ -34,16 +34,23 @@ class Macher:
         print(msg)
 
     def add_rule(self, rule: Rule):
+        other = self.find_rule(rule.target.name)
+
+        if other:
+            raise ValueError(f"There already is a rule for making {rule.target.name}")
+
         self.rules.append(rule)
 
     def make_rule(
         self,
         target: TargetLike,
-        inputs: Inputs | None = None,
+        inputs: Sequence[InputLike] | None = None,
         recipe: RecipeLike | None = None,
         help:   str | None = None
     ):
-        return Rule(target, inputs or [], self._recipe(recipe), help)
+        input_rules = [ self._input_rule(inp) for inp in inputs or [] ]
+        input_names = [ inp_rule.target.name for inp_rule in input_rules ]
+        return Rule(target, input_names, self._recipe(recipe), help)
 
     def find_rule(self, name: str) -> Rule | None:
         # TODO: best match (for patterns)
@@ -81,7 +88,9 @@ class Macher:
                 raise ValueError(f"No rule for making {inp}")
 
         # The input is an inline target, define a trivial rule to wrap it.
-        return self.make_rule(inp)
+        rule = self.make_rule(inp)
+        self.add_rule( rule )
+        return rule
 
     def execute(self, rule: Rule):
         first = rule.inputs[0] if len(rule.inputs) else None
@@ -97,14 +106,21 @@ class Macher:
 
         (rule.recipe)(ctx)
 
+        # Make each target only once
+        rule.target.done = True
+
     def mach(self, rule: Rule):
+        print("XXX", [ ( r.target.name, r.target.done ) for r in self.rules ] )
+        print("YYY", rule.target.name, rule.target.done )
         self._log(f"making {rule}...")
         outdated = rule.target.outdated()
 
+        print("ZZZ", rule.target.name, outdated )
+
         for inp in rule.inputs:
-            inp_rule = self._input_rule(inp)
+            inp_rule = self.require_rule(inp)
             self.mach(inp_rule)
-            outdated = rule.target.outdated(inp_rule.target)
+            outdated = outdated or rule.target.outdated(inp_rule.target)
 
         if outdated:
             self.execute(rule)

@@ -8,7 +8,7 @@ declare("lazy", lambda ctx: "lazy var")
 
 mach("main", help="build mach.txt", inputs = [
         mach("_setup", [], setup),
-        mach("vartest", [], script("""
+        mach("vartest", ["_setup"], script("""
             echo $'(test)' $$TEST
         """), "testing variables"),
     ])

@@ -13,31 +13,25 @@ class TargetMatch:
     def __init__(self, target: Target):
         self.target = target
 
-    def cook_inputs(self, inputs: Inputs) -> Inputs:
-        return [self.cook_input(inp) for inp in inputs]
-
-    def cook_input(self, input: InputLike) -> InputLike:
-        if isinstance(input, Rule):
-            cooked = self.cook_rule( input )
-        elif isinstance(input, Target):
-            cooked = input.get_cooked( self.cook_name( input.name ) )
-        else:
-            cooked = self.cook_name( input )
-
-        return cooked
+    def cook_inputs(self, inputs: Sequence[str]) -> Sequence[str]:
+        return [self.cook_name(inp) for inp in inputs]
 
     def cook_name(self, s: str) -> str:
         return s
 
     def get_cooked_target(self) -> Target:
-        return self.target
-
-    def cooked_target(self, target: Target) -> Target:
-         return target.get_cooked( self.cook_name( target.name ) )
+        name = self.cook_name(self.target.name)
+        return self.target.get_cooked(name)
 
     def cook_rule(self, rule: Rule) -> Rule:
+        cooked_target = self.get_cooked_target()
+
+        if cooked_target is rule.target:
+            # cooking did nothing
+            return rule
+
         return Rule(
-            self.cooked_target( rule.target ),
+            cooked_target,
             self.cook_inputs( rule.inputs ),
             rule.recipe,
             rule.help
@@ -50,7 +44,7 @@ _percent_pattern = re.compile("%")
 class PatternMatch(TargetMatch):
     match: re.Match
 
-    def __init__(self, target: "Target", match: re.Match):
+    def __init__(self, target: Target, match: re.Match):
         super().__init__(target)
         self.match = match
 
@@ -65,17 +59,14 @@ class PatternMatch(TargetMatch):
 
         return _percent_pattern.sub(f, s)
 
-    @override
-    def get_cooked_target(self) -> "Target":
-        name = self.cook_name(self.target.name)
-        return File(name)  # TODO: use a factory/class object
-
 
 class Target:
     name: str
+    done: bool
 
     def __init__(self, name: str):
         self.name = name
+        self.done = False
 
     def matches(self, name: str) -> TargetMatch | None:
         if name == self.name:
@@ -84,7 +75,7 @@ class Target:
             return None
 
     def outdated(self, _other: Target | None = None) -> bool:
-        return True
+        return not self.done
 
     def get_cooked(self, name):
         return Target(name)
@@ -97,6 +88,9 @@ class Target:
 class File(Target):
     @override
     def outdated(self, other: Target | None = None) -> bool:
+        if self.done:
+            return False
+
         try:
             mtime = os.path.getmtime(self.name)
             if other is None:
@@ -141,19 +135,18 @@ class Pattern(Target):
 
 TargetLike: TypeAlias = "Target | str"
 InputLike: TypeAlias = "Target | Rule | str"
-Inputs: TypeAlias = Sequence[InputLike]
 
 
 class Rule:
     target: Target
-    inputs: Inputs
+    inputs: Sequence[str]
     recipe: Recipe
     help:   str | None
 
     def __init__(
         self,
         target: TargetLike,
-        inputs: Inputs,
+        inputs: Sequence[str],
         recipe: Recipe,
         help:   str|None = None
     ):

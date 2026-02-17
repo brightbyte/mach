@@ -1,8 +1,10 @@
 import os
 import sys
+from typing import Sequence
 
 import help
-from macher import Macher, TargetLike, Inputs, RecipeLike, Script
+from macher import Macher, TargetLike, RecipeLike, Script
+from target import InputLike
 from wert import VarValue, Context
 from env import OutputMode
 
@@ -34,7 +36,7 @@ def declare(name: str, default: VarValue, cli: str|bool = False):
     macher.declare(name, default, cli)
 
 def mach(
-    target: TargetLike, inputs: Inputs | None = None, recipe: RecipeLike | None = None, help: str | None = None
+    target: TargetLike, inputs: Sequence[InputLike] | None = None, recipe: RecipeLike | None = None, help: str | None = None
 ):
     # TODO: multi target
     rule = macher.make_rule(target, inputs, recipe, help)
