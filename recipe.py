@@ -1,3 +1,5 @@
+import textwrap
+
 from env import Environment, OutputMode
 from wert import Context, expand_all
 
@@ -21,7 +23,7 @@ class Script:
     def __init__(self, env: Environment, cmd: str, options: Options|None):
         # NOTE: we have to use __dict__ in the constructor to bypass __setattr__!
         self.__dict__['env'] = env
-        self.__dict__['cmd'] = cmd
+        self.__dict__['cmd'] = textwrap.dedent(cmd.strip("\r\n"))
 
         options = options or {}
         self.__dict__['options'] = {
@@ -39,7 +41,7 @@ class Script:
         expanded_cmd = expand_all(self.cmd, ctx)
 
         if self.echo:
-            print("\t", expanded_cmd)
+            print(textwrap.indent(expanded_cmd, "> ").strip("\r\n"))
 
         kwargs = dict(self.options)
         envars = {

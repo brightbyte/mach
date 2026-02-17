@@ -8,10 +8,12 @@ from typing import TypeAlias, override
 from recipe import Recipe
 
 class TargetMatch:
-    target: Target
+    raw_target: Target
+    _cooked_target: Target | None
 
     def __init__(self, target: Target):
-        self.target = target
+        self.raw_target = target
+        self._cooked_target = None
 
     def cook_inputs(self, inputs: Sequence[str]) -> Sequence[str]:
         return [self.cook_name(inp) for inp in inputs]
@@ -20,8 +22,16 @@ class TargetMatch:
         return s
 
     def get_cooked_target(self) -> Target:
-        name = self.cook_name(self.target.name)
-        return self.target.get_cooked(name)
+        if self._cooked_target is None:
+            name = self.cook_name(self.raw_target.name)
+
+            if name != self.raw_target.name:
+                self._cooked_target = self.raw_target.get_cooked(name)
+            else:
+                # Don't use a fresh Target if the name didn't change.
+                # Targets are stateful!
+                self._cooked_target = self.raw_target
+        return self._cooked_target
 
     def cook_rule(self, rule: Rule) -> Rule:
         cooked_target = self.get_cooked_target()
@@ -77,7 +87,7 @@ class Target:
     def outdated(self, _other: Target | None = None) -> bool:
         return not self.done
 
-    def get_cooked(self, name):
+    def get_cooked(self, name) -> Target:
         return Target(name)
 
     @override

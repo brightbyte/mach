@@ -58,7 +58,13 @@ class Macher:
         for r in self.rules:
             match = r.matches(name)
             if match is not None:
-                return match.cook_rule( r )
+                cooked = match.cook_rule( r )
+
+                if cooked.target.name != r.target.name:
+                    # remember the cooked rule, so we re-use it if we need it again.
+                    self.add_rule( cooked )
+
+                return cooked
 
         return None
 
@@ -110,12 +116,8 @@ class Macher:
         rule.target.done = True
 
     def mach(self, rule: Rule):
-        print("XXX", [ ( r.target.name, r.target.done ) for r in self.rules ] )
-        print("YYY", rule.target.name, rule.target.done )
         self._log(f"making {rule}...")
         outdated = rule.target.outdated()
-
-        print("ZZZ", rule.target.name, outdated )
 
         for inp in rule.inputs:
             inp_rule = self.require_rule(inp)
