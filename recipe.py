@@ -6,7 +6,7 @@ from wert import Context, expand_all
 from typing import TypeAlias, Callable, Sequence, Any
 
 Recipe: TypeAlias = Callable[[Context], None]
-RecipeLike: TypeAlias = Recipe | str | Sequence[str]
+RecipeLike: TypeAlias = Recipe | str | Sequence['RecipeLike']
 Options: TypeAlias = dict[str, Any]
 
 DEFAULT_OPTIONS = {

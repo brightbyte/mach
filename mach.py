@@ -5,8 +5,9 @@ from typing import Sequence
 import help
 from macher import Macher, TargetLike, RecipeLike, Script
 from target import InputLike
-from wert import VarValue, Context
+from wert import VarValue, Context, expand_all, Function
 from env import OutputMode
+from recipe import Recipe
 
 _disable_run = False
 
@@ -55,10 +56,16 @@ def mute(script: Script) -> Script:
     script.output = OutputMode.MUTE
     return script
 
+def lazy(s: str) -> Function:
+    return lambda context, *args: expand_all(s, context)
+
+def info(s: str) -> Recipe:
+    return lambda context: print( expand_all(s, context) )
+
 mach( "help", (), help.recipe(macher), help.HELP )
 
 __all__ = [
-    'declare', 'mach', 'run', 'script',
+    'declare', 'mach', 'run', 'script', 'lazy', 'info', 'mute', 'blind',
     'Context', 'OutputMode'
 ]
 
