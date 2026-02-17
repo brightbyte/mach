@@ -1,4 +1,7 @@
-import os, sys
+import os
+import re
+import sys
+import textwrap
 
 from typing import Sequence
 from macher import Macher, Rule
@@ -34,26 +37,35 @@ def _bold(s):
 def _print(*s):
     print(*s)
 
+_WHITESPACE = re.compile(r'\s+')
+
 def _normalize(msg):
     if not msg:
         return "(no help)"
     elif msg is True:
-            return "(no help)"
+        return "(no help)"
     else:
-        return msg.strip()
+        msg = _WHITESPACE.sub(' ', msg)
+        return textwrap.fill(msg.strip(), subsequent_indent="    ")
 
 def _print_flag_help(name: str, help: str|bool):
-    _print( "\t", _bold(f"{name}:"), _normalize(help) )
+    _print( _bold(f"  - {name}:"), _normalize(help) )
 
 def _print_rule_help(rule: Rule):
-    _print( "\t", _bold(f"{rule.target.name}:"), _normalize(rule.help) )
+    _print( _bold(f"  - {rule.target.name}:"), _normalize(rule.help) )
 
 def _print_all_help(flags: dict[str, str|bool], rules: Sequence[Rule]):
+    if flags:
+        _print(_bold("Flags:"))
+
     for name, help in flags.items():
         if not help:
             continue
 
         _print_flag_help(name, help)
+
+    if rules:
+        _print(_bold("Rules:"))
 
     for rule in rules:
         if rule.target.name.startswith('_'):

@@ -10,7 +10,9 @@ mach("main", help="build mach.txt", inputs = [
         mach("_setup", [], setup),
         mach("vartest", ["_setup"], script("""
             echo $'(test)' $$TEST
-        """), "testing variables"),
+        """), """testing variables,
+        bla bla bla, yadda yadda, lorem ipsum dolor sit amet,
+        the quick brown fox makes jack a dull boy."""),
     ])
 
 run()
