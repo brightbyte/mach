@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Sequence
+from typing import Callable, Sequence
 
 import help
 from macher import Macher, TargetLike, RecipeLike, Script
@@ -62,10 +62,23 @@ def lazy(s: str) -> Function:
 def info(s: str) -> Recipe:
     return lambda context: print( expand_all(s, context) )
 
+def makes(tgt: TargetLike, *input: InputLike) -> Callable[[Recipe], Recipe]:
+    """
+    Annotation that turns a  recipe function into a rule by
+    associating it with a target
+    """
+
+    def decorator(fn: Recipe) -> Recipe:
+        mach(tgt, input, fn, fn.__doc__)
+        return fn
+
+    return decorator
+
 mach( "help", (), help.recipe(macher), help.HELP )
 
 __all__ = [
     'declare', 'mach', 'run', 'script', 'lazy', 'info', 'mute', 'blind',
+    'makes',
     'Context', 'OutputMode'
 ]
 

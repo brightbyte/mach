@@ -1,5 +1,4 @@
-from mach import mach, script, run, declare, Context
-from wert import flatten
+from mach import mach, script, run, declare, Context, makes
 
 mach("%.txt", ["%.py"], """
     mkdir -p output
@@ -7,6 +6,10 @@ mach("%.txt", ["%.py"], """
 """, """
     Make a txt file from a py file by greping for "def"
 """)
+
+@makes('something')
+def something(ctx: Context):
+    print("SOMETHING")
 
 def setup(ctx: Context):
     ctx.export("test", "hello")

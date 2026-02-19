@@ -34,11 +34,11 @@ class Macher:
         print(msg)
 
     def add_rule(self, rule: Rule):
-        other = self.find_rule(rule.target.name)
+        #for r in self.rules:
+        #    if rule.target.name == r.target.name:
+        #        raise ValueError(f"There already is a rule for making {rule.target.name}")
 
-        if other:
-            raise ValueError(f"There already is a rule for making {rule.target.name}")
-
+        print("ADD RULE", rule)
         self.rules.append(rule)
 
     def make_rule(
