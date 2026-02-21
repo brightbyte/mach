@@ -11,6 +11,7 @@ mach("%.txt", ["%.py"], """
 
 @makes('something')
 def something(ctx: Context):
+    """just a function that does something"""
     print("SOMETHING")
 
 def setup(ctx: Context):

@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable, Sequence
 from typing import Mapping
 
-from target import TargetLike, InputLike, Rule, File, is_file_name
+from target import Target, TargetLike, InputLike, Rule, File, TargetMatch, is_file_name
 from recipe import Recipe, RecipeLike, Script
 from env import Environment
 from wert import Context, VarValue
@@ -62,7 +62,7 @@ class Macher:
         for r in self.rules:
             match = r.matches(name)
             if match is not None:
-                cooked = match.cook_rule( r )
+                cooked = self._cook_rule( r, match )
 
                 if cooked.get_name() != r.get_name() and not self.has_rule(cooked.get_name()):
                     # remember the cooked rule, so we re-use it if we need it again.
@@ -71,6 +71,48 @@ class Macher:
                 return cooked
 
         return None
+
+    def _resolve_inputs(self, rule: Rule) -> Sequence[str]:
+        input_rules = [ self._input_rule(inp) for inp in rule.inputs ]
+        input_names = [ inp_rule.get_name() for inp_rule in input_rules ]
+
+        rule.inputs = input_names # TODO: mark as resolved, so we don't resovle again??
+        return input_names
+
+
+    def _cook_target(self, target: Target, match: TargetMatch) -> Target:
+        name = match.cook_name(target.name)
+
+        if name == target.name:
+            return target
+
+        if name in self.rules_by_name:
+            return self.rules_by_name[name].target
+
+        return target.get_cooked(name)
+
+    def _cook_rule(self, rule: Rule, match: TargetMatch) -> Rule:
+        name = match.cook_name(rule.get_name())
+
+        if name == rule.get_name():
+            return rule
+
+        if name in self.rules_by_name:
+            return self.rules_by_name[name]
+
+        input_names = self._resolve_inputs(rule)
+        cooked_inputs = [ match.cook_name(n) for n in input_names ]
+
+        rule = Rule(
+            self._cook_target( match.target, match),
+            cooked_inputs,
+            rule.recipe,
+            rule.help
+        )
+
+        self._resolve_inputs(rule)
+        self.add_rule(rule)
+        return rule
 
     def require_rule(self, name: str) -> Rule:
         rule = self.find_rule(name)
@@ -123,8 +165,7 @@ class Macher:
         self._log(f"making {rule}...")
         outdated = rule.target.outdated()
 
-        input_rules = [ self._input_rule(inp) for inp in rule.inputs ]
-        input_names = [ inp_rule.get_name() for inp_rule in input_rules ]
+        input_names = self._resolve_inputs(rule)
         for inp in input_names:
             inp_rule = self.require_rule(inp)
             self.mach(inp_rule)

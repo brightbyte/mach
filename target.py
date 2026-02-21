@@ -8,45 +8,13 @@ from typing import TypeAlias, override
 from recipe import Recipe
 
 class TargetMatch:
-    raw_target: Target
-    _cooked_target: Target | None
+    target: Target
 
     def __init__(self, target: Target):
-        self.raw_target = target
-        self._cooked_target = None
-
-    def cook_inputs(self, inputs: Sequence[str]) -> Sequence[str]:
-        return [self.cook_name(inp) for inp in inputs]
+        self.target = target
 
     def cook_name(self, s: str) -> str:
         return s
-
-    def get_cooked_target(self) -> Target:
-        if self._cooked_target is None:
-            name = self.cook_name(self.raw_target.name)
-
-            if name != self.raw_target.name:
-                self._cooked_target = self.raw_target.get_cooked(name)
-            else:
-                # Don't use a fresh Target if the name didn't change.
-                # Targets are stateful!
-                self._cooked_target = self.raw_target
-        return self._cooked_target
-
-    def cook_rule(self, rule: Rule) -> Rule:
-        cooked_target = self.get_cooked_target()
-
-        if cooked_target is rule.target:
-            # cooking did nothing
-            return rule
-
-        return Rule(
-            cooked_target,
-            self.cook_inputs( rule.inputs ),
-            rule.recipe,
-            rule.help
-        )
-
 
 _percent_pattern = re.compile("%")
 
