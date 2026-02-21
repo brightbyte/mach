@@ -1,5 +1,7 @@
 from mach import mach, script, run, declare, Context, makes
 
+import random
+
 mach("%.txt", ["%.py"], """
     mkdir -p output
     grep ^def $'<' > output/$'(__target__)'
@@ -16,12 +18,16 @@ def setup(ctx: Context):
 
 declare("TEST", "JUST A TEST", "A test value")
 declare("lazy", lambda ctx: "lazy var")
+declare("random", random)
+declare("dict", {"x": 1, "y": 2} )
 
 mach("main", help="build mach.txt", inputs = [
         mach("_setup", [], setup),
         "mach.txt",
         mach("vartest", [], script("""
             echo $'(test)' $$TEST
+            echo random: $'(random.random())'
+            echo dict: $(dict)
         """), "testing variables"),
     ])
 

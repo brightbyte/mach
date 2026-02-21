@@ -1,6 +1,6 @@
 import re
 
-from typing import TypeAlias, Protocol, override
+from typing import Any, TypeAlias, Protocol, override
 from collections import ChainMap
 from collections.abc import Sequence
 
@@ -12,9 +12,7 @@ class Function(Protocol):
     def __call__(self, context: "Context", *args: str) -> "VarValue": ...
 
 
-VarValue: TypeAlias = (
-    str | int | float | bool | Stringable | Function | Sequence["VarValue"] | None
-)
+VarValue: TypeAlias = Any
 
 _envar_pattern = re.compile(r'[A-Z_]+')
 
