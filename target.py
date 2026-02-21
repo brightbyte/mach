@@ -149,14 +149,14 @@ InputLike: TypeAlias = "Target | Rule | str"
 
 class Rule:
     target: Target
-    inputs: Sequence[str]
+    inputs: Sequence[InputLike]
     recipe: Recipe
     help:   str | None
 
     def __init__(
         self,
         target: TargetLike,
-        inputs: Sequence[str],
+        inputs: Sequence[InputLike],
         recipe: Recipe,
         help:   str|None = None
     ):
@@ -167,6 +167,9 @@ class Rule:
 
     @override
     def __str__(self):
+        return self.target.name
+
+    def get_name(self):
         return self.target.name
 
     def matches(self, name: str) -> TargetMatch | None:

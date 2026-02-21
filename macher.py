@@ -16,12 +16,15 @@ _DEFAULT_OPTIONS = {}
 
 class Macher:
     rules: list[Rule]
+    rules_by_name: dict[str, Rule]
+
     context: Context
     flags: dict[str, str|bool]
     options: dict[str, str|bool]
 
     def __init__(self):
         self.rules = []
+        self.rules_by_name = {}
         self.context = Context()
         self.env = Environment()
         self.flags = {}
@@ -34,12 +37,15 @@ class Macher:
         print(msg)
 
     def add_rule(self, rule: Rule):
-        #for r in self.rules:
-        #    if rule.target.name == r.target.name:
-        #        raise ValueError(f"There already is a rule for making {rule.target.name}")
+        name = rule.get_name()
+        if self.has_rule(name):
+            raise ValueError(f"There already is a rule for making {name}")
 
-        print("ADD RULE", rule)
         self.rules.append(rule)
+        self.rules_by_name[name] = rule
+
+    def has_rule(self, name: str):
+        return name in self.rules_by_name
 
     def make_rule(
         self,
@@ -48,19 +54,17 @@ class Macher:
         recipe: RecipeLike | None = None,
         help:   str | None = None
     ):
-        input_rules = [ self._input_rule(inp) for inp in inputs or [] ]
-        input_names = [ inp_rule.target.name for inp_rule in input_rules ]
-        return Rule(target, input_names, self._recipe(recipe), help)
+        return Rule(target, inputs or [], self._recipe(recipe), help)
 
     def find_rule(self, name: str) -> Rule | None:
-        # TODO: best match (for patterns)
-        # TODO: maybe: multi-match (merge recipes and inputs)
+        # TODO: best match (for patterns), match non-patterns first
+        # TODO: maybe: multi-match? (merge recipes and inputs)
         for r in self.rules:
             match = r.matches(name)
             if match is not None:
                 cooked = match.cook_rule( r )
 
-                if cooked.target.name != r.target.name:
+                if cooked.get_name() != r.get_name() and not self.has_rule(cooked.get_name()):
                     # remember the cooked rule, so we re-use it if we need it again.
                     self.add_rule( cooked )
 
@@ -119,7 +123,9 @@ class Macher:
         self._log(f"making {rule}...")
         outdated = rule.target.outdated()
 
-        for inp in rule.inputs:
+        input_rules = [ self._input_rule(inp) for inp in rule.inputs ]
+        input_names = [ inp_rule.get_name() for inp_rule in input_rules ]
+        for inp in input_names:
             inp_rule = self.require_rule(inp)
             self.mach(inp_rule)
             outdated = outdated or rule.target.outdated(inp_rule.target)
